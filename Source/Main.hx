@@ -55,7 +55,6 @@ class Main extends Sprite {
 		trace("server");
 		var server = new Server(COMMANDS_PORT, UPDATES_PORT, new ServerState() );
 		var btnClient = new Button("Client", function() {
-			trace("client");
 			var client = new Client("127.0.0.1", COMMANDS_PORT, UPDATES_PORT);
 		});
 		addChild(btnClient);

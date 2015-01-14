@@ -6,6 +6,7 @@ import neko.vm.Thread;
 import cpp.vm.Thread;
 #end
 
+import sys.io.File;
 import sys.net.Host;
 import sys.net.Socket;
 
@@ -15,9 +16,16 @@ interface IServerState {
 	function mainLoop(): String;
 }
 
-enum UpdateMessage {
+enum CommandMessage {
 	Command(command: String);
 	Socket(socket: Socket);
+	RemoveThread(thread: Thread);
+	Quit;
+}
+
+enum UpdateMessage {
+	Update(update: String);
+	Quit;
 }
 
 class Server
@@ -38,63 +46,114 @@ class Server
 	}	
 	
 	private function updatesProc() {
-		var updateSockets = new Array<Socket>();
+		var updaters = new Array<Thread>();
 		while (true) {
 			var msg = Thread.readMessage(false);
 			if (msg != null) {
-				handleMessage(cast(msg, UpdateMessage), updateSockets);
+				trace("msg", msg, updaters.length);
+				if (!handleMessage(cast(msg, CommandMessage), updaters)) {
+					return;
+				}
 			} else {
 				Sys.sleep(0.01);
-				broadcastUpdate(state.mainLoop(), updateSockets);
+				broadcastUpdate(UpdateMessage.Update(state.mainLoop()), updaters);
 			}
 		}
 	}
 	
-	private function handleMessage(message: UpdateMessage, updateSockets: Array<Socket>) {
+	private function handleMessage(message: CommandMessage, updaters: Array<Thread>) {
 		switch (message) {
-			case UpdateMessage.Command(command): {
-				broadcastUpdate(state.handleCommand(command), updateSockets);
+			case CommandMessage.Command(command): {
+				broadcastUpdate(UpdateMessage.Update(state.handleCommand(command)), updaters);
+				return true;
 			}
-			case UpdateMessage.Socket(socket): {
-				updateSockets.push(socket);
-				socket.output.writeString(state.getState());
+			case CommandMessage.Socket(socket): {
+				trace("subscribing");
+				socket.setFastSend(true);
+				var newThread = Thread.create(function() {
+					updaterProc(socket);
+				});
+				updaters.push(newThread);
+				trace(updaters.length);
+				newThread.sendMessage(UpdateMessage.Update(state.getState()));
+				return true;
+			}
+			case Quit: {
+				broadcastUpdate(UpdateMessage.Quit, updaters);
+				return true;
+			}
+			case RemoveThread(thread): {
+				trace(updaters.length);
+				updaters.remove(thread);
+				trace(updaters.length);
+				return updaters.length > 0;
 			}
 		}
 	}
 	
-	private function broadcastUpdate(update: String, updateSockets: Array<Socket>) {
-		if (update != null) {
-			for (updateSocket in updateSockets) {
-				updateSocket.output.writeString(update);
+	private function updaterProc(socket: Socket) {
+		try {
+			while (true) {
+				var msg = Thread.readMessage(true);
+				switch (cast(msg, UpdateMessage)) {
+					case Update(update): if (update != null) {
+						trace(update);
+						Utils.writeString(socket, update);
+						trace("sent, waiting for ack");
+						socket.setTimeout(0.5);
+						var reply = Utils.readString(socket);
+						trace(reply);
+						if (reply != "ack") {
+							break;
+						}
+					}
+					case Quit: break;
+				}
 			}
+		} catch (any: Dynamic) {
+			trace(Type.typeof(any));
+		}
+		updatesThread.sendMessage(CommandMessage.RemoveThread(Thread.current()));		
+	}
+	
+	private function broadcastUpdate(update: UpdateMessage, updaters: Array<Thread>) {
+		for (updater in updaters) {
+			updater.sendMessage(update);
 		}
 	}
 	
 	private function listenOn(port: Int, action: Socket -> Void) {
 		var socket = new Socket();
 		socket.bind(new Host("0.0.0.0"), port);
-		socket.listen(1);
+		socket.listen(5);
 		while (true) {
-			trace("listening on", port);
 			action(socket.accept());
 		}		
 	}
 	
 	private function updatesListener() {
 		listenOn(portUpdates, function(socket) {
-			updatesThread.sendMessage(UpdateMessage.Socket(socket));
+			trace("accepting updates");
+			updatesThread.sendMessage(CommandMessage.Socket(socket));
 		});
 	}
 	
 	private function commandsListener() {
 		listenOn(portCommands, function(socket) {
+			trace("accepting commands");
 			Thread.create(function() {
 				while (true) {
-					var command = socket.input.readLine();
-					trace(command);
-					updatesThread.sendMessage(UpdateMessage.Command(command));
+					try {
+						socket.setTimeout(10);
+						var command = Utils.readString(socket);
+						trace(command);
+						updatesThread.sendMessage(CommandMessage.Command(command));
+					} catch (any: Dynamic) {
+						trace(Type.typeof(any));
+						return;
+					}
 				}
-			});			
+			});
 		});
 	}	
 }
