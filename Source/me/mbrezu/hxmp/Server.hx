@@ -19,7 +19,7 @@ interface IServerState {
 enum CommandMessage {
 	Command(command: String);
 	Socket(socket: Socket);
-	RemoveThread(thread: Thread);
+	RemoveThread(thread: ThreadWrapper);
 	Quit;
 }
 
@@ -28,12 +28,36 @@ enum UpdateMessage {
 	Quit;
 }
 
+class ThreadWrapper {
+	public var thread(default, default): Thread;
+	public var id(default, null): Int;
+	
+	private static var idCounter = 0;
+	
+	public function new() {
+		this.thread = null;
+		idCounter++;
+		this.id = idCounter;
+	}
+	
+	public function removeFrom(array: Array<ThreadWrapper>) {
+		for (elt in array) {
+			if (elt.id == this.id) {
+				array.remove(elt);
+				break;
+			}
+		}
+	}
+}
+
 class Server
 {
 	private var state: IServerState;
 	private var updatesThread: Thread;
 	private var portCommands: Int;
 	private var portUpdates: Int;
+	private var commandsListenerThread: Thread;
+	private var updatesListenerThread: Thread;
 	
 	public function new(portCommands: Int, portUpdates: Int, state: IServerState)
 	{
@@ -41,40 +65,44 @@ class Server
 		this.portUpdates = portUpdates;
 		this.state = state;
 		updatesThread = Thread.create(updatesProc);		
-		Thread.create(commandsListener);
-		Thread.create(updatesListener);
+		commandsListenerThread = Thread.create(commandsListener);
+		updatesListenerThread = Thread.create(updatesListener);
 	}	
 	
+	public function shutDown() {
+		updatesThread.sendMessage(CommandMessage.Quit);
+		commandsListenerThread.sendMessage(false);
+		updatesListenerThread.sendMessage(false);
+	}
+	
 	private function updatesProc() {
-		var updaters = new Array<Thread>();
+		var updaters = new Array<ThreadWrapper>();		
 		while (true) {
 			var msg = Thread.readMessage(false);
 			if (msg != null) {
-				trace("msg", msg, updaters.length);
 				if (!handleMessage(cast(msg, CommandMessage), updaters)) {
 					return;
 				}
 			} else {
-				Sys.sleep(0.01);
 				broadcastUpdate(UpdateMessage.Update(state.mainLoop()), updaters);
 			}
 		}
 	}
 	
-	private function handleMessage(message: CommandMessage, updaters: Array<Thread>) {
+	private function handleMessage(message: CommandMessage, updaters: Array<ThreadWrapper>) {
 		switch (message) {
 			case CommandMessage.Command(command): {
 				broadcastUpdate(UpdateMessage.Update(state.handleCommand(command)), updaters);
 				return true;
 			}
 			case CommandMessage.Socket(socket): {
-				trace("subscribing");
 				socket.setFastSend(true);
+				var tw = new ThreadWrapper();
 				var newThread = Thread.create(function() {
-					updaterProc(socket);
+					updaterProc(socket, tw);
 				});
-				updaters.push(newThread);
-				trace(updaters.length);
+				tw.thread = newThread;
+				updaters.push(tw);
 				newThread.sendMessage(UpdateMessage.Update(state.getState()));
 				return true;
 			}
@@ -83,26 +111,21 @@ class Server
 				return true;
 			}
 			case RemoveThread(thread): {
-				trace(updaters.length);
 				updaters.remove(thread);
-				trace(updaters.length);
 				return updaters.length > 0;
 			}
 		}
 	}
 	
-	private function updaterProc(socket: Socket) {
+	private function updaterProc(socket: Socket, tw: ThreadWrapper) {
 		try {
 			while (true) {
 				var msg = Thread.readMessage(true);
 				switch (cast(msg, UpdateMessage)) {
 					case Update(update): if (update != null) {
-						trace(update);
 						Utils.writeString(socket, update);
-						trace("sent, waiting for ack");
-						socket.setTimeout(0.5);
+						socket.setTimeout(1);
 						var reply = Utils.readString(socket);
-						trace(reply);
 						if (reply != "ack") {
 							break;
 						}
@@ -111,14 +134,14 @@ class Server
 				}
 			}
 		} catch (any: Dynamic) {
-			trace(Type.typeof(any));
+			//trace(Type.typeof(any));
 		}
-		updatesThread.sendMessage(CommandMessage.RemoveThread(Thread.current()));		
+		updatesThread.sendMessage(CommandMessage.RemoveThread(tw));		
 	}
 	
-	private function broadcastUpdate(update: UpdateMessage, updaters: Array<Thread>) {
+	private function broadcastUpdate(update: UpdateMessage, updaters: Array<ThreadWrapper>) {
 		for (updater in updaters) {
-			updater.sendMessage(update);
+			updater.thread.sendMessage(update);
 		}
 	}
 	
@@ -127,29 +150,38 @@ class Server
 		socket.bind(new Host("0.0.0.0"), port);
 		socket.listen(5);
 		while (true) {
-			action(socket.accept());
+			socket.setBlocking(false);
+			try {
+				var result = socket.accept();
+				result.setBlocking(true);
+				action(result);
+			} catch (any: Dynamic) {
+				//trace(Type.typeof(any));
+				if (Thread.readMessage(false) == false) {
+					socket.close();
+					break;
+				}
+			}
+			Sys.sleep(0.1);
 		}		
 	}
 	
 	private function updatesListener() {
 		listenOn(portUpdates, function(socket) {
-			trace("accepting updates");
 			updatesThread.sendMessage(CommandMessage.Socket(socket));
 		});
 	}
 	
 	private function commandsListener() {
 		listenOn(portCommands, function(socket) {
-			trace("accepting commands");
 			Thread.create(function() {
 				while (true) {
 					try {
 						socket.setTimeout(10);
 						var command = Utils.readString(socket);
-						trace(command);
 						updatesThread.sendMessage(CommandMessage.Command(command));
 					} catch (any: Dynamic) {
-						trace(Type.typeof(any));
+						//trace(Type.typeof(any));
 						return;
 					}
 				}

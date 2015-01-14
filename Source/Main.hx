@@ -40,6 +40,7 @@ class ServerState implements IServerState {
 		return command + "\n";
 	}
 	public function mainLoop(): String {
+		Sys.sleep(0.01);
 		return null;
 	}
 }
@@ -54,10 +55,18 @@ class Main extends Sprite {
 		super ();
 		trace("server");
 		var server = new Server(COMMANDS_PORT, UPDATES_PORT, new ServerState() );
+		//server.shutDown();
 		var btnClient = new Button("Client", function() {
 			var client = new Client("127.0.0.1", COMMANDS_PORT, UPDATES_PORT);
 		});
 		addChild(btnClient);
+		var btnShutdown = new Button("Restart Server", function() {
+			server.shutDown();
+			Sys.sleep(1);
+			server = new Server(COMMANDS_PORT, UPDATES_PORT, new ServerState() );
+		});
+		btnShutdown.x = 200;
+		addChild(btnShutdown);
 	}
 	
 	

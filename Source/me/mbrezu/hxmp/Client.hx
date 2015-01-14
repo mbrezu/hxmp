@@ -24,7 +24,6 @@ class Client
 			var commandsSocket: Socket = new Socket();
 			commandsSocket.connect(host, portCommands);
 			commandsSocket.setFastSend(true);
-			//Sys.sleep(0.5);
 			Utils.writeString(commandsSocket, "test");
 			Utils.writeString(commandsSocket, "test");
 			commandsSocket.close();
