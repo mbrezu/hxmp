@@ -65,10 +65,12 @@ class Client
 	private function updateProc() {
 		while(true) {
 			try {
-				updatesSocket.setTimeout(10);
+				updatesSocket.setTimeout(0.01);
 				var update = Utils.readString(updatesSocket);
-				updatesSocket.setTimeout(0.5);
+				//trace("done reading", update);
+				//updatesSocket.setTimeout(0.5);
 				Utils.writeString(updatesSocket, "ack");
+				//trace("done acking");
 				clientState.handleUpdate(update);
 			} catch (any: Dynamic) {
 			}

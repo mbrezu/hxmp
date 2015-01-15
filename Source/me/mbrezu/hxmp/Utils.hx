@@ -41,8 +41,11 @@ class Utils
 	}
 	
 	public static function readString(socket: Socket): String {
+		socket.waitForRead();
 		var len = socket.input.readInt32();
-		return socket.input.readString(len);
+		var result = socket.input.readString(len);
+		//trace(len, result);
+		return result;
 	}
 	
 }
