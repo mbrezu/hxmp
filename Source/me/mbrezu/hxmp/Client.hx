@@ -64,17 +64,18 @@ class Client
 	
 	private function updateProc() {
 		while(true) {
-			updatesSocket.setTimeout(0.1);
 			try {
+				updatesSocket.setTimeout(10);
 				var update = Utils.readString(updatesSocket);
+				updatesSocket.setTimeout(0.5);
 				Utils.writeString(updatesSocket, "ack");
 				clientState.handleUpdate(update);
 			} catch (any: Dynamic) {
-				if (Thread.readMessage(false) == false) {
-					updatesSocket.close();
-					commandsSocket.close();
-					return;
-				}
+			}
+			if (Thread.readMessage(false) == false) {
+				updatesSocket.close();
+				commandsSocket.close();
+				return;
 			}
 		}
 	}

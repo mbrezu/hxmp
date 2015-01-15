@@ -123,7 +123,8 @@ class Server
 				});
 				tw.thread = newThread;
 				updaters.push(tw);
-				newThread.sendMessage(UpdateMessage.Update(state.getState()));
+				var initialState = state.getState();
+				newThread.sendMessage(UpdateMessage.Update(initialState));
 				return true;
 			}
 			case Quit: {
@@ -156,6 +157,7 @@ class Server
 		} catch (any: Dynamic) {
 			//trace(Type.typeof(any));
 		}
+		socket.close();
 		updatesThread.sendMessage(CommandMessage.RemoveThread(tw));		
 	}
 	
@@ -202,6 +204,7 @@ class Server
 						updatesThread.sendMessage(CommandMessage.Command(command));
 					} catch (any: Dynamic) {
 						//trace(Type.typeof(any));
+						socket.close();
 						return;
 					}
 				}

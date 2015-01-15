@@ -77,10 +77,10 @@ class ClientState implements IClientState {
 	
 	public function handleUpdate(update: String) {
 		counter ++;
-		trace(counter, update);
+		trace(counter, update);		
 		if (counter == 3 && client != null) {
 			client.shutdown();
-		} else {
+		} else {			
 			client.sendCommand("test");
 		}
 	}
