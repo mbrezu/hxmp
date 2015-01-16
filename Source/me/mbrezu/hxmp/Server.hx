@@ -145,8 +145,12 @@ class Server
 				switch (cast(msg, UpdateMessage)) {
 					case Update(update): if (update != null) {
 						socket.setTimeout(2);
+						socket.setBlocking(true);
+						//trace("sending update", tw.id);
 						Utils.writeString(socket, update);
+						//trace("waiting for ack", tw.id);
 						var reply = Utils.readString(socket);
+						//trace("getting ack", tw.id, reply);
 						if (reply != "ack") {
 							break;
 						}
@@ -157,6 +161,7 @@ class Server
 		} catch (any: Dynamic) {
 			//trace(Type.typeof(any));
 		}
+		//trace("************ closed client update socket", tw.id);
 		socket.close();
 		updatesThread.sendMessage(CommandMessage.RemoveThread(tw));		
 	}
@@ -181,7 +186,7 @@ class Server
 				//trace(Type.typeof(any));
 				if (Thread.readMessage(false) == false) {
 					socket.close();
-					break;
+					return;
 				}
 			}
 			Sys.sleep(0.1);
@@ -200,11 +205,13 @@ class Server
 				while (true) {
 					try {
 						socket.setTimeout(10);
+						socket.setBlocking(true);
 						var command = Utils.readString(socket);
 						updatesThread.sendMessage(CommandMessage.Command(command));
 					} catch (any: Dynamic) {
 						//trace(Type.typeof(any));
 						socket.close();
+						//trace("closed client commands socket");
 						return;
 					}
 				}

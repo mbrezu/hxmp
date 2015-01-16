@@ -36,16 +36,15 @@ class Utils
 	public static function writeString(socket: Socket, str: String) {
 		var b = Bytes.ofString(str);
 		socket.output.writeInt32(b.length);
-		socket.output.writeString(str);
+		socket.output.writeBytes(b, 0, b.length);
 		socket.output.flush();
 	}
 	
 	public static function readString(socket: Socket): String {
 		socket.waitForRead();
 		var len = socket.input.readInt32();
-		var result = socket.input.readString(len);
-		//trace(len, result);
-		return result;
+		var b = socket.input.read(len);		
+		return b.getString(0, len);
 	}
 	
 }

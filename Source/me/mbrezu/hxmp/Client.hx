@@ -75,6 +75,7 @@ class Client
 			} catch (any: Dynamic) {
 			}
 			if (Thread.readMessage(false) == false) {
+				trace("closed client");
 				updatesSocket.close();
 				commandsSocket.close();
 				return;
