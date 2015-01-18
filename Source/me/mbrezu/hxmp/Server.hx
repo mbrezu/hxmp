@@ -30,6 +30,7 @@ import cpp.vm.Thread;
 import sys.io.File;
 import sys.net.Host;
 import sys.net.Socket;
+import haxe.CallStack;
 
 interface IServerState {
 	function getState(): String;
@@ -105,7 +106,16 @@ class Server
 					return;
 				}
 			} else {
-				broadcastUpdate(UpdateMessage.Update(state.mainLoop()), updaters);
+				var update = null;
+				try {
+					update = state.mainLoop();					
+				} catch (any: Dynamic) {
+					trace(any);
+					for (line in CallStack.exceptionStack()) {
+						trace(line);
+					}
+				}
+				broadcastUpdate(UpdateMessage.Update(update), updaters);
 			}
 		}
 	}
