@@ -23,6 +23,9 @@ package me.mbrezu.hxmp;
 
 import haxe.io.Bytes;
 import haxe.io.BytesData;
+import haxe.io.BytesInput;
+import haxe.io.BytesOutput;
+import haxe.io.Eof;
 import sys.net.Socket;
 
 class Utils
@@ -35,16 +38,51 @@ class Utils
 	
 	public static function writeString(socket: Socket, str: String) {
 		var b = Bytes.ofString(str);
-		socket.output.writeInt32(b.length);
-		socket.output.writeBytes(b, 0, b.length);
+		var blen = new BytesOutput();
+		blen.writeInt32(b.length);
+		writeBytes(socket, blen.getBytes());
+		writeBytes(socket, b);
 		socket.output.flush();
 	}
 	
 	public static function readString(socket: Socket): String {
+		var len = new BytesInput(readBytes(socket, 4), 0, 4).readInt32();
+		return readBytes(socket, len).getString(0, len);
+	}
+	
+	private static function writeBytes(socket: Socket, bytes: Bytes) {
+		var pos = 0;
+		while (pos < bytes.length) {
+			var len = bytes.length - pos;
+			var bytesWritten = 0;
+			try {
+				bytesWritten = socket.output.writeBytes(bytes, pos, len);
+			} catch (any: Dynamic) { }
+			if (bytesWritten > 0) {
+				pos += bytesWritten;
+			}
+		}
+	}
+	
+	private static function readBytes(socket: Socket, len: Int): Bytes {
 		socket.waitForRead();
-		var len = socket.input.readInt32();
-		var b = socket.input.read(len);		
-		return b.getString(0, len);
+		var b = Bytes.alloc(len);
+		var pos = 0;
+		while (len > 0) {
+			var bytesRead = 0;
+			try {
+				bytesRead = socket.input.readBytes(b, pos, len);
+			}
+			catch (ex: Eof) {
+			}
+			if (bytesRead == 0) {
+				socket.waitForRead();
+			} else {
+				len -= bytesRead;
+				pos += bytesRead;
+			}
+		}
+		return b;
 	}
 	
 }
