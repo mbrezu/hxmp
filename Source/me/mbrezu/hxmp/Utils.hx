@@ -26,6 +26,7 @@ import haxe.io.BytesData;
 import haxe.io.BytesInput;
 import haxe.io.BytesOutput;
 import haxe.io.Eof;
+import haxe.io.Error;
 import sys.net.Socket;
 
 class Utils
@@ -60,12 +61,31 @@ class Utils
 			} catch (any: Dynamic) { }
 			if (bytesWritten > 0) {
 				pos += bytesWritten;
+			} else {
+				waitForWrite(socket, 1.0);
 			}
 		}
 	}
 	
+	private static function waitForWrite(socket: Socket, timeout: Float) {
+		trace("waiting for write");
+		var result = Socket.select(null, [socket], null, timeout);
+		var canWrite = result.write != null && result.write.length > 0 && result.write[0] == socket;
+		if (!canWrite) {
+			throw Error.Blocked;
+		}		
+	}
+	
+	private static function waitForRead(socket: Socket, timeout: Float) {
+		//trace("waiting for read");
+		var result = Socket.select([socket], null, null, timeout);
+		var canRead = result.read != null && result.read.length > 0 && result.read[0] == socket;
+		if (!canRead) {
+			throw Error.Blocked;
+		}		
+	}
+	
 	private static function readBytes(socket: Socket, len: Int): Bytes {
-		socket.waitForRead();
 		var b = Bytes.alloc(len);
 		var pos = 0;
 		while (len > 0) {
@@ -76,7 +96,7 @@ class Utils
 			catch (ex: Eof) {
 			}
 			if (bytesRead == 0) {
-				socket.waitForRead();
+				waitForRead(socket, 1.0);
 			} else {
 				len -= bytesRead;
 				pos += bytesRead;

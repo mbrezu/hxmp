@@ -200,7 +200,7 @@ class Server
 				}
 			}
 			Sys.sleep(0.1);
-		}		
+		}
 	}
 	
 	private function updatesListener() {

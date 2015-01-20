@@ -21,6 +21,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package me.mbrezu.hxmp;
 
+import haxe.CallStack;
 import sys.net.Host;
 import sys.net.Socket;
 
@@ -71,7 +72,14 @@ class Client
 				//updatesSocket.setTimeout(0.5);
 				Utils.writeString(updatesSocket, "ack");
 				//trace("done acking");
-				clientState.handleUpdate(update);
+				try {
+					clientState.handleUpdate(update);
+				} catch (any: Dynamic) {
+					trace(any);
+					for (line in CallStack.exceptionStack()) {
+						trace(line);
+					}
+				}
 			} catch (any: Dynamic) {
 			}
 			if (Thread.readMessage(false) == false) {
