@@ -68,19 +68,22 @@ class Utils
 	}
 	
 	private static function waitForWrite(socket: Socket, timeout: Float) {
-		trace("waiting for write");
+		//trace("waiting for write");
 		var result = Socket.select(null, [socket], null, timeout);
 		var canWrite = result.write != null && result.write.length > 0 && result.write[0] == socket;
 		if (!canWrite) {
+			trace("can't write");
 			throw Error.Blocked;
 		}		
 	}
 	
 	private static function waitForRead(socket: Socket, timeout: Float) {
-		//trace("waiting for read");
+		//trace('waiting for read, timeout = $timeout');
 		var result = Socket.select([socket], null, null, timeout);
 		var canRead = result.read != null && result.read.length > 0 && result.read[0] == socket;
+		//trace(result.read, socket);
 		if (!canRead) {
+			trace("can't read");
 			throw Error.Blocked;
 		}		
 	}
@@ -88,6 +91,7 @@ class Utils
 	private static function readBytes(socket: Socket, len: Int): Bytes {
 		var b = Bytes.alloc(len);
 		var pos = 0;
+		var socketReportedReady = false;
 		while (len > 0) {
 			var bytesRead = 0;
 			try {
@@ -95,11 +99,18 @@ class Utils
 			}
 			catch (ex: Eof) {
 			}
+			//trace('$bytesRead bytes read');
 			if (bytesRead == 0) {
-				waitForRead(socket, 1.0);
+				if (socketReportedReady) {
+					throw Error.Blocked;
+				} else {
+					waitForRead(socket, 1.0);				
+					socketReportedReady = true;
+				}
 			} else {
 				len -= bytesRead;
 				pos += bytesRead;
+				socketReportedReady = false;
 			}
 		}
 		return b;

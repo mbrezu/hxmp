@@ -23,10 +23,13 @@ package me.mbrezu.hxmp;
 
 #if neko
 import neko.vm.Thread;
+import neko.vm.Mutex;
 #elseif windows
 import cpp.vm.Thread;
+import cpp.vm.Mutex;
 #end
 
+import me.mbrezu.hxmp.Server.ProtectedCounter;
 import sys.io.File;
 import sys.net.Host;
 import sys.net.Socket;
@@ -72,6 +75,30 @@ class ThreadWrapper {
 	}
 }
 
+class ProtectedCounter {
+	private var counter: Int;
+	private var mutex: Mutex;
+	
+	public function new() {
+		counter = 0;
+		mutex = new Mutex();
+	}
+	
+	public function inc() {
+		mutex.acquire();
+		counter++;
+		trace(counter);
+		mutex.release();
+	}
+	
+	public function dec() {
+		mutex.acquire;
+		counter--;
+		trace(counter);
+		mutex.release();
+	}
+}
+
 class Server
 {
 	private var state: IServerState;
@@ -80,16 +107,26 @@ class Server
 	private var portUpdates: Int;
 	private var commandsListenerThread: Thread;
 	private var updatesListenerThread: Thread;
+	private var threadCounter: ProtectedCounter;
 	
 	public function new(portCommands: Int, portUpdates: Int, state: IServerState)
 	{
+		threadCounter = new ProtectedCounter();
 		this.portCommands = portCommands;
 		this.portUpdates = portUpdates;
 		this.state = state;
-		updatesThread = Thread.create(updatesProc);		
-		commandsListenerThread = Thread.create(commandsListener);
-		updatesListenerThread = Thread.create(updatesListener);
+		updatesThread = threadMaker(updatesProc);		
+		commandsListenerThread = threadMaker(commandsListener);
+		updatesListenerThread = threadMaker(updatesListener);
 	}	
+	
+	public function threadMaker(action: Void -> Void) {
+		return Thread.create(function() {
+			threadCounter.inc();
+			action();
+			threadCounter.dec();
+		});
+	}
 	
 	public function shutDown() {
 		updatesThread.sendMessage(CommandMessage.Quit);
@@ -128,7 +165,7 @@ class Server
 			}
 			case CommandMessage.Socket(socket): {
 				var tw = new ThreadWrapper();
-				var newThread = Thread.create(function() {
+				var newThread = threadMaker(function() {
 					updaterProc(socket, tw);
 				});
 				tw.thread = newThread;
@@ -139,11 +176,11 @@ class Server
 			}
 			case Quit: {
 				broadcastUpdate(UpdateMessage.Quit, updaters);
-				return true;
+				return false;
 			}
 			case RemoveThread(thread): {
 				updaters.remove(thread);
-				return updaters.length > 0;
+				return return true;
 			}
 		}
 	}
@@ -171,7 +208,7 @@ class Server
 		} catch (any: Dynamic) {
 			//trace(Type.typeof(any));
 		}
-		//trace("************ closed client update socket", tw.id);
+		trace("************ closed client update socket", tw.id);
 		socket.close();
 		updatesThread.sendMessage(CommandMessage.RemoveThread(tw));		
 	}
@@ -200,7 +237,7 @@ class Server
 				}
 			}
 			Sys.sleep(0.1);
-		}
+		}		
 	}
 	
 	private function updatesListener() {
@@ -211,17 +248,21 @@ class Server
 	
 	private function commandsListener() {
 		listenOn(portCommands, function(socket) {
-			Thread.create(function() {
+			threadMaker(function() {
 				while (true) {
 					try {
-						socket.setTimeout(10);
+						socket.setTimeout(2);
 						socket.setBlocking(true);
 						var command = Utils.readString(socket);
+						//trace(command);
 						updatesThread.sendMessage(CommandMessage.Command(command));
 					} catch (any: Dynamic) {
-						//trace(Type.typeof(any));
+						trace(Type.typeof(any).getName(), any);
+						for (line in CallStack.exceptionStack()) {
+							trace(line);
+						}
 						socket.close();
-						//trace("closed client commands socket");
+						trace("closed client commands socket");
 						return;
 					}
 				}
